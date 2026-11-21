@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -38,9 +38,11 @@ namespace IssaPlugin
             AssetLoader.Load();
 
             _harmony = new Harmony(PluginInfo.PLUGIN_GUID);
-            _harmony.PatchAll(typeof(IssaPluginPlugin).Assembly);
+            int patchFailures = Compatibility.PatchRegistrar.Apply(
+                _harmony, typeof(IssaPluginPlugin).Assembly,
+                message => Log.LogInfo(message), message => Log.LogError(message));
             SessionConfig.Install(_harmony);
-            Log.LogInfo("Harmony patches applied.");
+            Log.LogInfo($"Harmony registration completed ({patchFailures} failures).");
 
             // Optional: adds search, per-item filtering, and collapsible sections to the
             // ModConfig settings UI. No-ops when ModConfig is not installed.
@@ -116,7 +118,8 @@ namespace IssaPlugin
             gameObject.AddComponent<ShapeShifterOverlay>();
             gameObject.AddComponent<OrbBomberOverlay>();
 
-            Log.LogInfo("IssaPlugin by Scusemua has loaded.");
+            Log.LogInfo($"IssaPlugin by Scusemua has loaded ({patchFailures} patch failures). "
+                + "Development compatibility build for SBG 1.4.0-798; in-game verification required.");
         }
 
         private void OnDestroy()

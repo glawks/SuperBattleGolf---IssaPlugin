@@ -1,0 +1,105 @@
+# SBG 1.4.0-798 compatibility development build
+
+Status: source fix prepared; game API compatibility and gameplay are not yet verified.
+No release or main-branch update is part of this work.
+
+## Evidence and root cause
+
+The reported startup log identifies BepInEx 5.4.23.5, Unity 6000.3.27,
+IssaMod 0.0.49, and ModConfig 0.1.3. The reported Harmony failure targets
+BNetworkManager.OnPlayerConfirmedCheatingDetected, a method absent in the new game.
+The full original log is not present in this workspace; these diagnostics come
+from the supplied investigation, not a fresh reproduction.
+
+Plugin.Awake initializes all configuration and loads the bundle before PatchAll.
+A Harmony exception aborts the remaining Awake work: SessionConfig, integrations,
+match/config event subscriptions, sync components, overlays and spawner window.
+Depending on discovery order, only some attributed patches may have been installed.
+Asset-bundle success therefore does not demonstrate successful item registration.
+
+The obsolete SuppressCheatKickPatch is removed. No replacement anti-cheat target
+or suppression is installed. Native validation and rate limits remain active.
+Rapid-fire items previously relied on global kick suppression; remote rapid fire
+must be tested for rate-limit rejection or disconnects before calling this fully
+compatible. Changing those call sites requires inspection of the current game API.
+
+Patch classes are now processed independently under the original Harmony owner.
+Failures log their class and full exception and do not stop later classes.
+Newly installed patches from a failed multi-target class are rolled back. Successful
+classes and other mods' patches remain installed. A failed required gameplay patch
+still means incomplete functionality; failure counts are printed at startup.
+Manual SessionConfig installation remains required and is not silently ignored.
+
+## Item and network trace
+
+- Items/ItemRegistry.cs declares 46 definitions with stable ItemType IDs 100–145.
+  Definitions, IDs, configuration keys, defaults, bundle and wire messages are unchanged.
+- ItemCollectionInitPatch runs after ItemCollection.Initialize and calls
+  InjectCustomItems, extending private items and allItemData collections with ItemData.
+  ItemData properties and Initialize are also required; item names have a getter patch
+  plus lazy localization registration from Plugin.Update.
+- ItemSpawnerSettings.ResetRuntimeData injects weighted enabled items into regular
+  and mobility pools through private ItemPool.spawnChances and totalSpawnChanceWeight.
+  MatchSetupRules patches also recalculate weights; host spawn configuration is synced.
+- ServerTryAddItem and Mirror's generated UserCode_CmdAddItem__ItemType intercept
+  custom items. DirectAddCustomItem writes the authoritative private inventory slots
+  after HasSpaceForItem. Hotkeys/spawner use host grants or a server request handler.
+- TryUseItem and animator/inventory patches dispatch definitions and held models.
+  ItemHelper reflects DecrementUseFromSlotAt, RemoveIfOutOfUses and SetCurrentItemUse.
+- NetworkIdentity.Awake attaches the same ordered bridge components on every peer.
+  BNetworkManager.OnStartClient registers prefabs and custom message serializers and
+  handlers; OnStopClient resets registration. Server-ready pushes host configuration
+  and weights to late joiners. Network messages bypass Mirror IL weaving.
+- All peers need the same development DLL and original bundle. A host-only test
+  cannot validate remote serialization, bridge indices or reconnect behaviour.
+
+Private members, generated Mirror method names and named Harmony parameters are
+version-sensitive. No updated spawning/inventory API can be confirmed or ruled out
+without the actual 1.4.0-798 assemblies. Do not rename targets speculatively.
+
+## Dependency assessment and build
+
+The project targets netstandard2.1 and BepInEx 5.x, matching the reported loader's
+major version. Its Unity compile package is 6000.2.4, while the log reports 6000.3.27;
+that difference needs actual assembly/runtime validation. The project also requires
+untracked Assembly/*.dll game, Mirror, UI, ModConfig and ItemSpawner references.
+Even optional integrations need their DLLs at compile time.
+
+ModConfig 0.1.3's FullScreenMessage.ShowInternal parameter mismatch is a separate
+plugin failure. This patch does not modify, unpatch or repair ModConfig. IssaMod's
+own configuration file remains available without that optional UI, but the installed
+ModConfig UI cannot be claimed compatible until its own fix is tested. For isolation,
+first test without ModConfig and ItemSpawner, then re-enable each separately.
+
+The development Actions workflow runs registrar regression tests without game DLLs.
+To compile the plugin, supply a HTTPS ZIP URL via workflow_dispatch references_url
+(or repository variable ISSAMOD_REFERENCES_URL). The ZIP needs every HintPath DLL
+listed in IssaPlugin.csproj from the target installation plus the optional integration
+DLLs. The workflow fails if any reference is missing, records SHA-256 hashes, builds,
+and uploads only the plugin, PDB, unchanged bundle, these notes and commit ID.
+It does not publish a release or upload game reference assemblies as artifacts.
+Use an authorized reference source; no game binaries need be committed to Git.
+
+## In-game test checklist
+
+1. Back up the existing plugin folder/config. Replace IssaPlugin.dll with the dev DLL;
+   retain the original IssaPluginBundle. Do not reuse the upstream .dll.sig: it signs
+   different bytes. This fork's test build is unsigned.
+2. Launch without ModConfig/ItemSpawner. Capture the full BepInEx LogOutput.log.
+   Check the compatibility registration summary and final loaded message. Any patch
+   failure is actionable, even when startup continues.
+3. Host a private lobby. Confirm '[ItemRegistry] Injected 46 custom items', regular
+   and mobility pool injection, and prefab/message-handler registration logs.
+4. Exercise all 46 items using the existing spawner/hotkeys, then normal item boxes.
+   Check names, icons, models, use counts, last-use deselection and inventory sizes.
+5. Test remote client grants with AllowHotkeyItemGiving both disabled and enabled,
+   pickup/use/drop, rapid-fire ammo/damage/VFX, and host-controlled spawn settings.
+6. Verify late join, reconnect, second lobby, hole transitions and match-end cleanup.
+   Check remote visuals and host config sync without overwriting client config files.
+7. Repeat with ModConfig 0.1.3 and ItemSpawner enabled separately, recording their
+   own errors. Confirm every existing setting remains available in the .cfg file.
+
+Review: config/items/network/bundle behaviour is unchanged by source diff, apart
+from removal of global kick suppression. Registrar isolation has automated coverage
+for missing targets, partial-class rollback, other-owner preservation and unload.
+Compilation and in-game checks remain required before merge or release.

@@ -1,0 +1,83 @@
+name: Compatibility development build
+on:
+  push:
+    branches: [dev/sbg-1.4.0-compat]
+  workflow_dispatch:
+    inputs:
+      references_url:
+        description: 'HTTPS ZIP URL containing the 1.4.0-798 managed game DLLs and optional mod DLLs (flat or nested)'
+        required: false
+        type: string
+permissions:
+  contents: read
+jobs:
+  patch-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Compatibility
+            IssaPlugin.Tests
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet test IssaPlugin.Tests/Compatibility.Tests.csproj --configuration Release --logger "trx;LogFileName=compatibility.trx"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compatibility-test-results
+          path: IssaPlugin.Tests/TestResults
+  plugin:
+    if: inputs.references_url != '' || vars.ISSAMOD_REFERENCES_URL != ''
+    needs: patch-tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            /*
+            !/Assets/
+            !/AutoInstaller/
+            !/icon.png
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Obtain build references
+        shell: pwsh
+        env:
+          REFERENCES_URL: ${{ inputs.references_url || vars.ISSAMOD_REFERENCES_URL }}
+        run: |
+          if (([uri]$env:REFERENCES_URL).Scheme -ne 'https') { throw 'References URL must use HTTPS.' }
+          Invoke-WebRequest -Uri $env:REFERENCES_URL -OutFile "$env:RUNNER_TEMP/references.zip"
+          Expand-Archive "$env:RUNNER_TEMP/references.zip" "$env:RUNNER_TEMP/references"
+          New-Item -ItemType Directory Assembly -Force | Out-Null
+          Get-ChildItem "$env:RUNNER_TEMP/references" -Filter *.dll -Recurse | ForEach-Object {
+            $target = Join-Path Assembly $_.Name
+            if (Test-Path $target) { throw "Duplicate reference filename: $($_.Name)" }
+            Copy-Item $_.FullName $target
+          }
+          [xml]$project = Get-Content IssaPlugin.csproj
+          foreach ($reference in $project.Project.ItemGroup.Reference) {
+            if ($reference.HintPath -and !(Test-Path $reference.HintPath)) {
+              throw "Missing required build reference: $($reference.HintPath)"
+            }
+          }
+          Get-FileHash Assembly/*.dll | Format-Table -AutoSize
+      - name: Build development DLL
+        run: dotnet build IssaPlugin.csproj --configuration Release
+      - name: Stage test package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory artifacts/IssaMod-dev -Force | Out-Null
+          Copy-Item bin/Release/netstandard2.1/IssaPlugin.dll artifacts/IssaMod-dev/
+          Copy-Item bin/Release/netstandard2.1/IssaPlugin.pdb artifacts/IssaMod-dev/
+          Copy-Item IssaPluginBundle artifacts/IssaMod-dev/ -Recurse
+          Copy-Item COMPATIBILITY-TESTING.md artifacts/IssaMod-dev/
+          git rev-parse HEAD | Set-Content artifacts/IssaMod-dev/commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IssaMod-sbg-1.4.0-dev-${{ github.sha }}
+          path: artifacts/IssaMod-dev
+          if-no-files-found: error
