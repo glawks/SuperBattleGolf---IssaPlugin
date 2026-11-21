@@ -29,7 +29,6 @@ jobs:
           name: compatibility-test-results
           path: IssaPlugin.Tests/TestResults
   plugin:
-    if: inputs.references_url != '' || vars.ISSAMOD_REFERENCES_URL != ''
     needs: patch-tests
     runs-on: windows-latest
     steps:
@@ -39,6 +38,7 @@ jobs:
             /*
             !/Assets/
             !/AutoInstaller/
+            !/IssaPluginBundle/
             !/icon.png
           sparse-checkout-cone-mode: false
       - uses: actions/setup-dotnet@v4
@@ -49,8 +49,13 @@ jobs:
         env:
           REFERENCES_URL: ${{ inputs.references_url || vars.ISSAMOD_REFERENCES_URL }}
         run: |
-          if (([uri]$env:REFERENCES_URL).Scheme -ne 'https') { throw 'References URL must use HTTPS.' }
-          Invoke-WebRequest -Uri $env:REFERENCES_URL -OutFile "$env:RUNNER_TEMP/references.zip"
+          if ($env:REFERENCES_URL -and ([uri]$env:REFERENCES_URL).Scheme -ne 'https') { throw 'References URL must use HTTPS.' }
+          if ($env:REFERENCES_URL) {
+            Write-Output "::add-mask::$env:REFERENCES_URL"
+            Invoke-WebRequest -Uri $env:REFERENCES_URL -OutFile "$env:RUNNER_TEMP/references.zip"
+          } else {
+            Copy-Item BuildReferences/sbg-1.4.0-798-api.zip "$env:RUNNER_TEMP/references.zip"
+          }
           Expand-Archive "$env:RUNNER_TEMP/references.zip" "$env:RUNNER_TEMP/references"
           New-Item -ItemType Directory Assembly -Force | Out-Null
           Get-ChildItem "$env:RUNNER_TEMP/references" -Filter *.dll -Recurse | ForEach-Object {
@@ -73,7 +78,7 @@ jobs:
           New-Item -ItemType Directory artifacts/IssaMod-dev -Force | Out-Null
           Copy-Item bin/Release/netstandard2.1/IssaPlugin.dll artifacts/IssaMod-dev/
           Copy-Item bin/Release/netstandard2.1/IssaPlugin.pdb artifacts/IssaMod-dev/
-          Copy-Item IssaPluginBundle artifacts/IssaMod-dev/ -Recurse
+          Copy-Item MULTIPLAYER-TESTING.md artifacts/IssaMod-dev/
           Copy-Item COMPATIBILITY-TESTING.md artifacts/IssaMod-dev/
           git rev-parse HEAD | Set-Content artifacts/IssaMod-dev/commit.txt
       - uses: actions/upload-artifact@v4

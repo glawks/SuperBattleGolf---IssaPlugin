@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
@@ -27,31 +27,20 @@ namespace IssaPlugin.Patches
     [HarmonyPatch]
     static class NetworkManagerRegisterPrefabsPatch
     {
-        // Prefabs only need to be registered once — Mirror warns on re-registration.
-        // Writers/readers/handlers must be re-registered on every OnStartClient because
-        // Mirror clears them when the client shuts down, and the local (host) connection
-        // bypasses serialization entirely so a null Writer<T>.write only breaks remote
-        // clients, making the bug invisible on the host side.
-        private static bool _prefabsRegistered;
+        internal static readonly Dictionary<uint, GameObject> CustomPrefabs = new();
 
-        static System.Reflection.MethodBase TargetMethod() =>
-            AccessTools.Method(typeof(BNetworkManager), "OnStartClient");
+        static MethodBase TargetMethod() => AccessTools.Method(typeof(BNetworkManager), "OnStartClient");
 
-        static void Postfix()
+        static void Postfix() => EnsureReady("OnStartClient");
+
+        internal static void EnsureReady(string reason)
         {
-            if (!_prefabsRegistered)
-            {
-                IssaPluginPlugin.Log.LogInfo("[NetworkManager] Registering custom prefabs.");
-                RegisterPrefabs();
-                _prefabsRegistered = true;
-            }
-
-            // Always re-register message handlers, writers, and readers.
-            // Mirror clears Writer<T>/Reader<T> delegates on client shutdown, so
-            // re-registering here ensures they are valid for every new session.
-            IssaPluginPlugin.Log.LogInfo("[NetworkManager] Registering custom message handlers.");
+            // The live Mirror dictionary is authoritative, not a sticky boolean.
+            RegisterPrefabs();
             RegisterNetworkMessages();
-            IssaPluginPlugin.Log.LogInfo("[NetworkManager] Custom message handlers registered.");
+            IssaPluginPlugin.Log.LogInfo(
+                $"[NetworkReady] {reason}: customPrefabs={CustomPrefabs.Count}, "
+                + $"client={NetworkClient.active}, server={NetworkServer.active}, assets={AssetLoader.IsLoaded}");
             ValidateMessageIds();
         }
 
@@ -2091,7 +2080,12 @@ namespace IssaPlugin.Patches
             );
         }
 
-        public static void ResetRegistration() => _prefabsRegistered = false;
+        public static void ResetRegistration()
+        {
+            CustomPrefabs.Clear();
+            Firearm.ResetNativeRateState();
+            MoonClientLogic.ClearAll();
+        }
 
         private static void RegisterPrefabs()
         {
@@ -2158,10 +2152,25 @@ namespace IssaPlugin.Patches
                 return;
             }
 
+            CustomPrefabs[ni.assetId] = prefab;
+            // Let Mirror's own next registration pass retain these too.
+            var manager = NetworkManager.singleton;
+            if (manager != null && !manager.spawnPrefabs.Contains(prefab))
+                manager.spawnPrefabs.Add(prefab);
+            if (NetworkClient.prefabs.TryGetValue(ni.assetId, out var existing))
+            {
+                if (existing == prefab) return;
+                if (existing != null)
+                {
+                    IssaPluginPlugin.Log.LogError(
+                        $"[NetworkPrefab] Collision assetId={ni.assetId}: expected={prefab.name}, actual={existing.name}; refusing overwrite.");
+                    return;
+                }
+            }
             NetworkClient.RegisterPrefab(prefab);
+            bool registered = NetworkClient.prefabs.TryGetValue(ni.assetId, out var actual) && actual == prefab;
             IssaPluginPlugin.Log.LogInfo(
-                $"[NetworkManager] Registered '{prefab.name}' assetId={ni.assetId}."
-            );
+                $"[NetworkPrefab] registered={registered} prefab={prefab.name} assetId={ni.assetId}");
         }
     }
 

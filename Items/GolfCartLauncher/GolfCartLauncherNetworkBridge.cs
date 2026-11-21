@@ -154,12 +154,8 @@ namespace IssaPlugin.Items
             if (cart == null)
                 return;
 
-            // The server drives this cart's flight; without this the host's local
-            // client would own the transform and overwrite the launch velocity.
-            ServerAuthoritativeTransform.Apply(cart.gameObject, "GolfCartLauncher");
-            if (cart.Movement != null)
-                cart.Movement.syncDirection = SyncDirection.ServerToClient;
-
+            // Preserve the native prefab's authority configuration. The native
+            // seating method sets movement direction and transfers identity ownership.
             NetworkServer.Spawn(cart.gameObject);
 
             // Attribute run-over knockouts to the shooter. Set after Spawn so the
@@ -331,13 +327,28 @@ namespace IssaPlugin.Items
         /// </summary>
         public static void HandleJoyrideLaunch(GolfCartJoyrideLaunchMessage msg)
         {
-            if (!NetworkClient.spawned.TryGetValue(msg.CartNetId, out var identity))
-                return;
+            IssaPluginPlugin.Instance.StartCoroutine(ApplyOwnedLaunch(msg));
+        }
 
+        private static System.Collections.IEnumerator ApplyOwnedLaunch(GolfCartJoyrideLaunchMessage msg)
+        {
+            float deadline = Time.unscaledTime + 2f;
+            NetworkIdentity identity = null;
+            while (Time.unscaledTime < deadline)
+            {
+                if (NetworkClient.spawned.TryGetValue(msg.CartNetId, out identity)
+                    && identity != null && identity.isOwned) break;
+                yield return null;
+            }
+            if (identity == null || !identity.isOwned)
+            {
+                IssaPluginPlugin.Log.LogError($"[GolfCartLauncher] Ownership not received for cart netId={msg.CartNetId}; launch impulse not applied.");
+                yield break;
+            }
             var cart = identity.GetComponent<GolfCartInfo>();
             var rb = cart != null && cart.AsEntity != null ? cart.AsEntity.Rigidbody : null;
             if (rb == null)
-                return;
+                yield break;
 
             rb.isKinematic = false;
             rb.linearVelocity = msg.Velocity;

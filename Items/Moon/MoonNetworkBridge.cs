@@ -32,21 +32,7 @@ namespace IssaPlugin.Items
 
         // ── Unity lifecycle ───────────────────────────────────────────────────
 
-        private void Update()
-        {
-            if (!isOwned)
-                return;
-
-            MoonClientLogic.UpdateAll();
-        }
-
-        private void OnGUI()
-        {
-            if (!isOwned)
-                return;
-
-            MoonClientLogic.DrawWarningGui();
-        }
+        // Global visuals tick once from the plugin, independently of bridge ownership.
 
         // ── Client — activating the item ──────────────────────────────────────
 

@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
@@ -37,28 +39,17 @@ namespace IssaPlugin.Patches
     [HarmonyPatch]
     static class SuperJumboBurgerSpeedPatch
     {
-        private const string OnGroundName = "<UpdateMovementSpeed>g__GetTargetSpeedOnGround|321_0";
-        private const string InAirName = "<UpdateMovementSpeed>g__GetTargetSpeedInAir|321_1";
-
         static IEnumerable<MethodBase> TargetMethods()
         {
-            var onGround = AccessTools.Method(typeof(PlayerMovement), OnGroundName);
-            var inAir = AccessTools.Method(typeof(PlayerMovement), InAirName);
-
-            if (onGround == null || inAir == null)
+            foreach (string name in new[] { "GetTargetSpeedOnGround", "GetTargetSpeedInAir" })
             {
-                IssaPluginPlugin.Log.LogWarning(
-                    "[SuperJumboBurger] Movement target-speed methods not found "
-                        + $"(onGround={onGround != null}, inAir={inAir != null}) — giant "
-                        + "movement speed will not scale with size. A game update likely "
-                        + "renamed them."
-                );
+                var matches = typeof(PlayerMovement).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Where(m => m.Name.StartsWith("<UpdateMovementSpeed>g__" + name + "|", StringComparison.Ordinal)
+                        && m.ReturnType == typeof(float) && m.GetParameters().Length == 0).ToArray();
+                if (matches.Length != 1)
+                    throw new MissingMethodException($"Expected one {name} helper, found {matches.Length}.");
+                yield return matches[0];
             }
-
-            if (onGround != null)
-                yield return onGround;
-            if (inAir != null)
-                yield return inAir;
         }
 
         /// Scales the freshly computed target speed. __result is a new value each call,

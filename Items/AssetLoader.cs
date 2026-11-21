@@ -1,5 +1,6 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Reflection;
 using Mirror;
 using UnityEngine;
@@ -223,6 +224,7 @@ namespace IssaPlugin.Items
         /// Client-only moon VFX prefab that approaches the course.
         private static GameObject _moonVfxPrefab;
         public static GameObject MoonVfxPrefab => Vfx(_moonVfxPrefab);
+        internal static GameObject MoonVfxPrefabRaw => _moonVfxPrefab;
 
         /// Networked droppable-item prefab; carries NetworkIdentity, NetworkTransform,
         /// Rigidbody (kinematic), SphereCollider (trigger), Entity, and DroppedCustomItem.
@@ -336,6 +338,7 @@ namespace IssaPlugin.Items
         public static GameObject TeleporterHandheldPrefab { get; private set; }
         private static GameObject _teleporterVfxPrefab;
         public static GameObject TeleporterVfxPrefab => Vfx(_teleporterVfxPrefab);
+        internal static GameObject TeleporterVfxPrefabRaw => _teleporterVfxPrefab;
 
         // ── Flamethrower ──────────────────────────────────────────────────────
         public static Sprite FlamethrowerIcon { get; private set; }
@@ -413,6 +416,7 @@ namespace IssaPlugin.Items
         public static bool IsLoaded => _bundle != null;
 
         private static AssetBundle _bundle;
+        public static string BundleFingerprint { get; private set; } = "unloaded";
 
         // ─────────────────────────────────────────────────────────────────────
         //  Public API
@@ -432,6 +436,7 @@ namespace IssaPlugin.Items
             ApplyPostLoadMutations();
 
             IssaPluginPlugin.Log.LogInfo("[Assets] IssaPluginBundle loaded.");
+            IssaPluginPlugin.Log.LogInfo($"[VFX] enabled={VfxOn}, MoonLoaded={_moonVfxPrefab != null}, TeleporterLoaded={_teleporterVfxPrefab != null}.");
         }
 
         public static void Unload()
@@ -1218,6 +1223,10 @@ namespace IssaPlugin.Items
                 }
             }
 
+            using (var stream = File.OpenRead(bundlePath))
+            using (var hash = SHA256.Create())
+                BundleFingerprint = System.BitConverter.ToString(hash.ComputeHash(stream)).Replace("-", "");
+            IssaPluginPlugin.Log.LogInfo($"[Assets] Bundle SHA256={BundleFingerprint}");
             _bundle = AssetBundle.LoadFromFile(bundlePath);
             if (_bundle == null)
             {

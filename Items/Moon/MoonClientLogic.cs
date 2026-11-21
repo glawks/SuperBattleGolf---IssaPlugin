@@ -37,6 +37,8 @@ namespace IssaPlugin.Items
         // Physics coroutine — non-null only on the local player's client
         public Coroutine ForceCoroutine;
         public PlayerMovement ForceMovement;
+        public Rigidbody ForceBody;
+        public bool OriginalGravity;
         public float InitialScale;
         public float FinalScale;
         public float TotalDuration => ApproachDuration + SuckDuration;
@@ -52,6 +54,7 @@ namespace IssaPlugin.Items
 
         public static void HandleMoonBegin(MoonBeginMessage msg)
         {
+            IssaPluginPlugin.Log.LogInfo($"[Moon] Begin received wielder={msg.WielderNetId}, state={CourseManager.MatchState}, localReady={GameManager.LocalPlayerInfo != null}, rawLoaded={AssetLoader.MoonVfxPrefabRaw != null}, vfxEnabled={ModConfig.Global.CustomVfxEnabled.Value}.");
             // On a remote client a MoonBeginMessage can arrive after the local
             // hole-transition cleanup already ran (HoleOverview). The server cleaned
             // up without broadcasting MoonEndMessage, so no end will ever come.
@@ -67,6 +70,7 @@ namespace IssaPlugin.Items
 
         public static void HandleMoonEnd(MoonEndMessage msg)
         {
+            IssaPluginPlugin.Log.LogInfo($"[Moon] End received wielder={msg.WielderNetId}.");
             EndSession(msg.WielderNetId, msg.ExplosionPos);
         }
 
@@ -80,6 +84,7 @@ namespace IssaPlugin.Items
             foreach (var kvp in s_sessions)
             {
                 var state = kvp.Value;
+                TryAttachLocalPhysics(state);
                 float elapsed = Time.time - state.StartTime;
 
                 Vector3 moonPos;
@@ -485,10 +490,8 @@ namespace IssaPlugin.Items
 
         private static void BeginSession(MoonBeginMessage msg)
         {
-            var localInfo = GameManager.LocalPlayerInfo;
-            if (localInfo == null)
-                return;
-
+            // Visuals can start before the local player identity exists. Attach
+            // local forces later, without discarding a successfully received Begin.
             EndSessionInternal(msg.WielderNetId);
 
             var state = new MoonSessionState
@@ -522,25 +525,28 @@ namespace IssaPlugin.Items
             }
             else
             {
-                IssaPluginPlugin.Log.LogWarning(
-                    "[MoonClientLogic] AssetLoader.MoonVfxPrefab is NULL — moon VFX will not appear."
-                );
+                IssaPluginPlugin.Log.LogInfo(
+                    $"[MoonClientLogic] Visual skipped: enabled={ModConfig.Global.CustomVfxEnabled.Value}, rawLoaded={AssetLoader.MoonVfxPrefabRaw != null}.");
             }
 
             s_sessions[msg.WielderNetId] = state;
 
-            var movement = localInfo.Movement;
-            if (movement != null)
-            {
-                state.ForceMovement = movement;
-                state.ForceCoroutine = movement.StartCoroutine(ForceCoroutine(msg.WielderNetId));
-            }
-
-            BeginDuskEffect(localInfo.Movement);
+            TryAttachLocalPhysics(state);
 
             IssaPluginPlugin.Log.LogInfo(
                 $"[MoonClientLogic] Session started. wielder={msg.WielderNetId} spawnPos={msg.MoonSpawnPos} impactPos={msg.MoonImpactPos}"
             );
+        }
+
+        private static void TryAttachLocalPhysics(MoonSessionState state)
+        {
+            if (state.ForceMovement != null || Time.time - state.StartTime > state.TotalDuration)
+                return;
+            var movement = GameManager.LocalPlayerInfo?.Movement;
+            if (movement == null) return;
+            state.ForceMovement = movement;
+            state.ForceCoroutine = movement.StartCoroutine(ForceCoroutine(state.WielderNetId));
+            BeginDuskEffect(movement);
         }
 
         private static void EndSession(uint wielderNetId, Vector3 explosionPos)
@@ -655,6 +661,8 @@ namespace IssaPlugin.Items
 
             if (state.ForceCoroutine != null && state.ForceMovement != null)
                 state.ForceMovement.StopCoroutine(state.ForceCoroutine);
+            if (state.ForceBody != null)
+                state.ForceBody.useGravity = state.OriginalGravity;
 
             if (state.MoonVfxInstance != null)
                 Object.Destroy(state.MoonVfxInstance);
@@ -705,8 +713,12 @@ namespace IssaPlugin.Items
                         ? seat.golfCart.AsEntity.Rigidbody
                         : localInfo.GetComponentInParent<Rigidbody>();
 
-                if (lastRb != null && lastRb != rb)
-                    lastRb.useGravity = true;
+                if (state.ForceBody != rb)
+                {
+                    if (state.ForceBody != null) state.ForceBody.useGravity = state.OriginalGravity;
+                    state.ForceBody = rb;
+                    if (rb != null) state.OriginalGravity = rb.useGravity;
+                }
                 lastRb = rb;
 
                 if (rb != null)

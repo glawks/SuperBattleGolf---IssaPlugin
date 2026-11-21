@@ -133,13 +133,17 @@ namespace IssaPlugin.Items
         /// </summary>
         public static void HandleVfx(TeleporterVfxMessage msg)
         {
+            IssaPluginPlugin.Log.LogInfo(
+                $"[Teleporter] VFX received enabled={ModConfig.Global.CustomVfxEnabled.Value}, rawLoaded={AssetLoader.TeleporterVfxPrefabRaw != null}, origin={msg.Origin}, destination={msg.Destination}.");
             SpawnTeleportVfx(msg.Origin);
             SpawnTeleportVfx(msg.Destination);
         }
 
         private static void SpawnTeleportVfx(Vector3 position)
         {
-            var prefab = AssetLoader.TeleporterVfxPrefab;
+            // Disabled cosmetics are intentional, not a missing-asset failure.
+            if (!ModConfig.Global.CustomVfxEnabled.Value) return;
+            var prefab = AssetLoader.TeleporterVfxPrefabRaw;
             if (prefab == null)
             {
                 IssaPluginPlugin.Log.LogWarning(

@@ -1,5 +1,8 @@
 # SBG 1.4.0-798 compatibility development build
 
+For the current multiplayer r2 implementation, limitations and test plan, see
+[MULTIPLAYER-TESTING.md](MULTIPLAYER-TESTING.md). The notes below record the initial startup repair.
+
 Status: compiled successfully against the supplied 1.4.0-798 managed DLLs, BepInEx 5.4.23.5 and HarmonyX 2.9.0.0; gameplay is not yet verified.
 No release or main-branch update is part of this work.
 

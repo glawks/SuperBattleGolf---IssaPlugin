@@ -39,6 +39,49 @@ namespace IssaPlugin.Items
 
     public static class Firearm
     {
+        private static readonly Dictionary<PlayerInventory, Compatibility.NativeRateGate> ShotGates = new();
+        private static readonly Dictionary<PlayerInventory, Compatibility.NativeRateGate> SoundGates = new();
+        private static readonly Dictionary<PlayerInventory, Compatibility.NativeRateGate> EffectGates = new();
+        private static readonly Dictionary<Hittable, Compatibility.NativeRateGate> HitGates = new();
+
+        private static Compatibility.NativeRateGate Gate(
+            Dictionary<PlayerInventory, Compatibility.NativeRateGate> gates,
+            PlayerInventory inventory, double interval, double reset)
+        {
+            if (!gates.TryGetValue(inventory, out var gate))
+                gates[inventory] = gate = new Compatibility.NativeRateGate(interval, reset);
+            return gate;
+        }
+
+        public static void ResetNativeRateState()
+        {
+            ShotGates.Clear(); SoundGates.Clear(); EffectGates.Clear(); HitGates.Clear();
+            Busy.Clear(); LastVfxTime.Clear(); _holdInventory = null; _holdBullets = false;
+        }
+
+        private static IEnumerator WaitForNativeShot(PlayerInventory inventory, ItemType type,
+            bool requireAim = false, bool requireMouse = false)
+        {
+            var gate = Gate(ShotGates, inventory, 0.15, 1.25);
+            while (!gate.TryAcquire(Time.timeAsDouble))
+            {
+                if (inventory == null || inventory.GetEffectivelyEquippedItem(true) != type
+                    || (requireAim && !IsHoldingAim(inventory))
+                    || (requireMouse && (Mouse.current == null || !Mouse.current.leftButton.isPressed)))
+                    yield break;
+                yield return null;
+            }
+        }
+
+        private static void PlaySafeShotSound(PlayerInventory inventory)
+        {
+            if (Gate(SoundGates, inventory, 0.3, 1.25).TryAcquire(Time.timeAsDouble))
+                inventory.PlayerInfo.PlayerAudio.PlayElephantGunShotForAllClients();
+        }
+
+        private static bool AllowNativeEffect(PlayerInventory inventory) =>
+            Gate(EffectGates, inventory, 0.35, 2.25).TryAcquire(Time.timeAsDouble);
+
         private static readonly HashSet<ItemType> Busy = new HashSet<ItemType>();
         private static readonly Dictionary<ItemType, float> LastVfxTime = new Dictionary<ItemType, float>();
 
@@ -273,6 +316,10 @@ namespace IssaPlugin.Items
             PelletImpact impact
         )
         {
+            if (!HitGates.TryGetValue(hittable, out var gate))
+                HitGates[hittable] = gate = new Compatibility.NativeRateGate(0.65, 2.25);
+            if (!gate.TryAcquire(Time.timeAsDouble)) return;
+
             var useId = (ItemUseId)(
                 IncrementAndGetCurrentItemUseIdMethod?.Invoke(
                     inventory,
@@ -354,7 +401,7 @@ namespace IssaPlugin.Items
                 if (requireAim && !IsHoldingAim(inventory))
                     yield break;
 
-                inventory.PlayerInfo.PlayerAudio.PlayElephantGunShotForAllClients();
+                PlaySafeShotSound(inventory);
                 _holdBullets = true;
 
                 // Rounds still owed after the shots fired this hold. A remote client's
@@ -379,6 +426,11 @@ namespace IssaPlugin.Items
                     if (owed < 0)
                         owed = ItemRegistry.GetEffectiveRemainingUses(inventory, slot);
 
+                    yield return WaitForNativeShot(inventory, itemType, requireAim, mouseWasDown);
+                    if (inventory == null || inventory.GetEffectivelyEquippedItem(true) != itemType
+                        || (requireAim && !IsHoldingAim(inventory))
+                        || (mouseWasDown && (Mouse.current == null || !Mouse.current.leftButton.isPressed))) break;
+                    if (owed >= 0) ItemRegistry.RestoreLocalUses(inventory, slot, itemType, owed);
                     FireShell(inventory, profile());
                     ItemHelper.DecrementAndRemove(inventory, slot);
                     if (owed > 0)
@@ -444,12 +496,15 @@ namespace IssaPlugin.Items
                 if (driveUseAnimation)
                     ItemHelper.SetCurrentItemUse(inventory, ItemUseType.Regular);
 
+                yield return WaitForNativeShot(inventory, itemType);
+                if (inventory == null || inventory.GetEffectivelyEquippedItem(true) != itemType)
+                    yield break;
                 FireShell(inventory, profile());
 
                 int slot = inventory.EquippedItemIndex;
                 ItemHelper.DecrementAndRemove(inventory, slot);
 
-                inventory.PlayerInfo.PlayerAudio.PlayElephantGunShotForAllClients();
+                PlaySafeShotSound(inventory);
 
                 float elapsed = 0f;
                 float duration = recovery();
@@ -536,7 +591,8 @@ namespace IssaPlugin.Items
             if (!AllowVfx(profile))
                 return;
 
-            VfxManager.PlayElephantGunMissForAllClients(inventory, direction);
+            if (AllowNativeEffect(inventory))
+                VfxManager.PlayElephantGunMissForAllClients(inventory, direction);
         }
 
         private static void PlayHit(
@@ -560,6 +616,7 @@ namespace IssaPlugin.Items
                 return;
             }
 
+            if (!AllowNativeEffect(inventory)) return;
             VfxManager.PlayElephantGunHitForAllClients(
                 inventory,
                 new VfxManager.GunShotHitVfxData(

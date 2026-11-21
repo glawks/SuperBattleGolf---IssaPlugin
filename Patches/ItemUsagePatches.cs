@@ -91,8 +91,14 @@ namespace IssaPlugin.Patches
         static MethodBase TargetMethod() =>
             AccessTools.Method(typeof(PlayerInventory), "LocalPlayerUpdateEquipmentSwitchers");
 
+        // The native method also calls ownership-only setters. Do not run it on
+        // remote inventories; their SyncVar hooks update equipment and models.
+        static bool Prefix(PlayerInventory __instance) => __instance != null && __instance.isLocalPlayer;
+
         static void Postfix(PlayerInventory __instance)
         {
+            if (__instance == null || !__instance.isLocalPlayer || __instance.PlayerInfo == null)
+                return;
             var equipped = __instance.GetEffectivelyEquippedItem(true);
             var rightSwitcher = __instance.PlayerInfo.RightHandEquipmentSwitcher;
 

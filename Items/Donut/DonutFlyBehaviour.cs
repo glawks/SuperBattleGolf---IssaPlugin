@@ -27,7 +27,10 @@ namespace IssaPlugin.Items
                 _rb.freezeRotation = true; // rotation is driven by transform, not physics
             }
 
-            gameObject.layer = LayerMask.NameToLayer("Donut");
+            int layer = LayerMask.NameToLayer("Donut");
+            if (layer >= 0 && layer < 32) gameObject.layer = layer;
+            else IssaPluginPlugin.Log.LogInfo(
+                $"[Donut] No named Donut layer; retaining authored layer {gameObject.layer}.");
 
             DonutLaserTarget = new GameObject("Donut_LaserTarget");
             DonutLaserTarget.transform.SetParent(transform);

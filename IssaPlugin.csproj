@@ -61,6 +61,7 @@
 
   <ItemGroup>
     <Compile Remove="IssaPlugin.Tests\**" />
+    <Compile Remove="BuildTools\**" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(UseInstalledReferences)' == 'true'">

@@ -119,7 +119,7 @@ namespace IssaPlugin
             gameObject.AddComponent<OrbBomberOverlay>();
 
             Log.LogInfo($"IssaPlugin by Scusemua has loaded ({patchFailures} patch failures). "
-                + "Development compatibility build for SBG 1.4.0-798; in-game verification required.");
+                + "Multiplayer compatibility test r2 for SBG 1.4.0-798; in-game verification required.");
         }
 
         private void OnDestroy()
@@ -151,8 +151,11 @@ namespace IssaPlugin
             ItemRegistry.InvalidateHotkeyItems();
         }
 
+        private void OnGUI() => MoonClientLogic.DrawWarningGui();
+
         private void Update()
         {
+            MoonClientLogic.UpdateAll();
             if (!_itemNamesRegistered)
                 _itemNamesRegistered = ItemRegistry.RegisterCustomItemNames();
 
