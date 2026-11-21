@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using IssaPlugin.Items;
@@ -31,11 +33,22 @@ namespace IssaPlugin.Patches
     [HarmonyPatch]
     static class SuperJumboBurgerUpperBodyPatch
     {
-        static MethodBase TargetMethod() =>
-            AccessTools.Method(
-                typeof(PlayerAnimatorIo),
-                "<LocalPlayerUpdateUpperBodyLayerEnabled>g__ShouldUpperBodyLayerBeEnabled|153_0"
-            );
+        static MethodBase TargetMethod()
+        {
+            // Compiler-generated ordinal changes when unrelated game methods are added.
+            // Require exactly one matching instance bool helper; never guess by ordinal.
+            var matches = typeof(PlayerAnimatorIo)
+                .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Where(m => m.Name.StartsWith(
+                    "<LocalPlayerUpdateUpperBodyLayerEnabled>g__ShouldUpperBodyLayerBeEnabled|",
+                    StringComparison.Ordinal)
+                    && m.ReturnType == typeof(bool) && m.GetParameters().Length == 0)
+                .ToArray();
+            if (matches.Length != 1)
+                throw new MissingMethodException(
+                    $"Expected one PlayerAnimatorIo upper-body helper, found {matches.Length}.");
+            return matches[0];
+        }
 
         static void Postfix(PlayerAnimatorIo __instance, ref bool __result)
         {

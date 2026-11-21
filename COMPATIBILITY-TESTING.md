@@ -1,6 +1,6 @@
 # SBG 1.4.0-798 compatibility development build
 
-Status: source fix prepared; game API compatibility and gameplay are not yet verified.
+Status: compiled successfully against the supplied 1.4.0-798 managed DLLs, BepInEx 5.4.23.5 and HarmonyX 2.9.0.0; gameplay is not yet verified.
 No release or main-branch update is part of this work.
 
 ## Evidence and root cause
@@ -8,8 +8,8 @@ No release or main-branch update is part of this work.
 The reported startup log identifies BepInEx 5.4.23.5, Unity 6000.3.27,
 IssaMod 0.0.49, and ModConfig 0.1.3. The reported Harmony failure targets
 BNetworkManager.OnPlayerConfirmedCheatingDetected, a method absent in the new game.
-The full original log is not present in this workspace; these diagnostics come
-from the supplied investigation, not a fresh reproduction.
+The supplied Default.zip includes LogOutput.log confirming both startup errors.
+This is log and assembly inspection, not an in-game reproduction.
 
 Plugin.Awake initializes all configuration and loads the bundle before PatchAll.
 A Harmony exception aborts the remaining Awake work: SessionConfig, integrations,
@@ -53,17 +53,37 @@ Manual SessionConfig installation remains required and is not silently ignored.
 - All peers need the same development DLL and original bundle. A host-only test
   cannot validate remote serialization, bridge indices or reconnect behaviour.
 
-Private members, generated Mirror method names and named Harmony parameters are
-version-sensitive. No updated spawning/inventory API can be confirmed or ruled out
-without the actual 1.4.0-798 assemblies. Do not rename targets speculatively.
+Inspection of the supplied assemblies confirms the item collection, pool, inventory
+add/use/consume, and network lifecycle hooks above are present with the expected
+parameter names. A literal-name scan of reflected game fields/properties found no
+missing members. Compiling the complete plugin found additional API changes:
+
+- PlayerMovement.CharacterScale is gone. Reads now use its generated
+  NetworkcharacterScale property, which returns the same underlying characterScale
+  SyncVar used by the existing setters. No new message types or component order changes.
+- PlayerMovement.NetworksyncedVelocity is gone. Grappling still writes the existing
+  Velocity property, whose setter writes Rigidbody.linearVelocity plus anchor velocity.
+  The obsolete duplicate sync write is removed; the game now reads remote motion
+  from PlayerInfo.AsEntity.NetworkRigidbody. Remote grappling remains a test priority.
+- The generated upper-body helper moved from ordinal 153_0 to 170_0. Resolve its
+  semantic name prefix and require a unique instance bool/no-argument method.
+- Four existing null-conditional assignments require a newer C# compiler. They are
+  replaced with equivalent explicit null checks so the .NET 8 build works.
+
+These checks do not execute Harmony patches inside Unity; changed runtime semantics
+and validation still require the checklist below.
 
 ## Dependency assessment and build
 
 The project targets netstandard2.1 and BepInEx 5.x, matching the reported loader's
 major version. Its Unity compile package is 6000.2.4, while the log reports 6000.3.27;
-that difference needs actual assembly/runtime validation. The project also requires
+the test DLL is compiled directly against the supplied engine assemblies. The default build also requires
 untracked Assembly/*.dll game, Mirror, UI, ModConfig and ItemSpawner references.
-Even optional integrations need their DLLs at compile time.
+The development build supports -p:UseInstalledReferences=true with the supplied
+managed, BepInEx core and ModConfig DLLs in Assembly/. It excludes duplicate legacy
+0Harmony20 and framework assemblies. ItemSpawner interoperability now resolves the
+loaded plugin instance type; it no longer requires an ItemSpawner compile reference.
+No ItemSpawner mod is installed in the supplied profile.
 
 ModConfig 0.1.3's FullScreenMessage.ShowInternal parameter mismatch is a separate
 plugin failure. This patch does not modify, unpatch or repair ModConfig. IssaMod's
@@ -73,9 +93,8 @@ first test without ModConfig and ItemSpawner, then re-enable each separately.
 
 The development Actions workflow runs registrar regression tests without game DLLs.
 To compile the plugin, supply a HTTPS ZIP URL via workflow_dispatch references_url
-(or repository variable ISSAMOD_REFERENCES_URL). The ZIP needs every HintPath DLL
-listed in IssaPlugin.csproj from the target installation plus the optional integration
-DLLs. The workflow fails if any reference is missing, records SHA-256 hashes, builds,
+(or repository variable ISSAMOD_REFERENCES_URL). The ZIP needs the managed game DLLs,
+BepInEx core DLLs and ModConfig DLL (the same inputs as the local successful build). The workflow fails if any reference is missing, records SHA-256 hashes, builds,
 and uploads only the plugin, PDB, unchanged bundle, these notes and commit ID.
 It does not publish a release or upload game reference assemblies as artifacts.
 Use an authorized reference source; no game binaries need be committed to Git.
@@ -100,6 +119,6 @@ Use an authorized reference source; no game binaries need be committed to Git.
    own errors. Confirm every existing setting remains available in the .cfg file.
 
 Review: config/items/network/bundle behaviour is unchanged by source diff, apart
-from removal of global kick suppression. Registrar isolation has automated coverage
+from removal of global kick suppression. Registrar isolation has regression tests
 for missing targets, partial-class rollback, other-owner preservation and unload.
-Compilation and in-game checks remain required before merge or release.
+The complete plugin compiles with zero warnings and zero errors. In-game checks remain required before merge or release.

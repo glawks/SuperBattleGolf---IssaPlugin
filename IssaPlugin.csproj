@@ -17,7 +17,7 @@
     <Optimize>False</Optimize>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(UseInstalledReferences)' != 'true'">
     <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
     <PackageReference Include="BepInEx.Core" Version="5.*" />
     <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*" />
@@ -63,7 +63,16 @@
     <Compile Remove="IssaPlugin.Tests\**" />
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(UseInstalledReferences)' == 'true'">
+    <!-- Build against the user's exact installed engine/loader rather than newer
+         wildcard NuGet packages. Framework assemblies come from netstandard2.1. -->
+    <Reference Include="Assembly/*.dll"
+               Exclude="Assembly/System*.dll;Assembly/mscorlib.dll;Assembly/netstandard.dll;Assembly/Mono.Security.dll;Assembly/0Harmony20.dll">
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseInstalledReferences)' != 'true'">
     <Reference Include="SharedAssembly">
       <HintPath>Assembly\SharedAssembly.dll</HintPath>
     </Reference>
@@ -122,14 +131,6 @@
       <HintPath>Assembly\com.atomic.modconfig.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <!-- Optional interop: ItemSpawner. Referenced only to suppress its window when
-         present; our spawner does not depend on it. Private=false so we never ship it. -->
-    <Reference Include="com.atomic.itemspawner">
-      <HintPath>Assembly\com.atomic.itemspawner.dll</HintPath>
-      <Private>false</Private>
-      <!-- Aliased: the mod's root namespace "ItemSpawner" collides with the base game's
-           ItemSpawner type in GameAssembly. -->
-      <Aliases>ItemSpawnerMod</Aliases>
-    </Reference>
+
   </ItemGroup>
 </Project>

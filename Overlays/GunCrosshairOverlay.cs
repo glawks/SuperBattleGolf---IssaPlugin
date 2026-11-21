@@ -143,13 +143,11 @@ namespace IssaPlugin.Overlays
         private void FixLookRotationAfterScope()
         {
             _camera ??= Camera.main;
-            if (_camera != null)
-                GameManager
-                    .LocalPlayerInfo
-                    ?.Movement
-                    ?.transform.rotation = Quaternion.LookRotation(
-                        _camera.transform.forward.normalized
-                    );
+            var movement = GameManager.LocalPlayerInfo?.Movement;
+            if (_camera != null && movement != null)
+                movement.transform.rotation = Quaternion.LookRotation(
+                    _camera.transform.forward.normalized
+                );
         }
 
         private void LateUpdate()

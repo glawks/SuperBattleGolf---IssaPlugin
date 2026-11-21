@@ -1,4 +1,3 @@
-extern alias ItemSpawnerMod;
 using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -93,7 +92,8 @@ namespace IssaPlugin.Integrations.SpawnerUI
     internal static class ItemSpawnerWindowPatch
     {
         public static MethodBase TargetMethod() =>
-            AccessTools.Method(typeof(ItemSpawnerMod::ItemSpawner.Plugin), "OnGUI");
+            AccessTools.Method(
+                Chainloader.PluginInfos["com.atomic.itemspawner"].Instance.GetType(), "OnGUI");
 
         public static MethodInfo PrefixMethod() =>
             AccessTools.Method(typeof(ItemSpawnerWindowPatch), nameof(Prefix));

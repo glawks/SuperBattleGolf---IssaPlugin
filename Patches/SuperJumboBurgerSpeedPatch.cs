@@ -79,7 +79,7 @@ namespace IssaPlugin.Patches
             // remote giants move at the same speed on every client. The multiplier is
             // derived purely from CharacterScale, a SyncVar, so every client computes
             // the same value with no extra replication.
-            __result *= SuperJumboBurgerBehaviour.GetSpeedMultiplier(__instance.CharacterScale);
+            __result *= SuperJumboBurgerBehaviour.GetSpeedMultiplier(__instance.NetworkcharacterScale);
         }
     }
 }

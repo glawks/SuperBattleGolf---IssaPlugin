@@ -67,9 +67,9 @@ namespace IssaPlugin.Patches
 
             VelocityProp.SetValue(__instance, velocity);
 
-            var body = __instance.PlayerInfo?.Rigidbody;
-            if (body != null)
-                __instance.NetworksyncedVelocity = body.linearVelocity;
+            // Velocity's setter writes Rigidbody.linearVelocity (including anchor
+            // velocity). The current game no longer exposes NetworksyncedVelocity;
+            // its normal player physics synchronization observes that rigidbody.
         }
     }
 }
