@@ -28,13 +28,13 @@ public class PatchRegistrarTests
             Assert.Contains(errors, e => e.Contains(nameof(PartialFailure)));
             Assert.Contains(Harmony.GetPatchInfo(AccessTools.Method(typeof(Target), nameof(Target.First))).Owners,
                 id => id == other.Id);
-            harmony.UnpatchSelf();
+            harmony.UnpatchAll(harmony.Id);
             Assert.Equal(0, Target.Working());
         }
-        finally { harmony.UnpatchSelf(); other.UnpatchSelf(); }
+        finally { harmony.UnpatchAll(harmony.Id); other.UnpatchAll(other.Id); }
     }
 
-    public static void OtherPostfix() { }
+    private static void OtherPostfix() { }
 
     public static class Target
     {
