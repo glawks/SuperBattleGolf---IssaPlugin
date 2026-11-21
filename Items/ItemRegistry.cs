@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -582,20 +582,17 @@ namespace IssaPlugin.Items
             if (!NetworkServer.active)
                 return false;
 
-            int emptyIndex;
-            if (!inventory.HasSpaceForItem(out emptyIndex))
-            {
-                IssaPluginPlugin.Log.LogWarning("[ItemRegistry] No empty slot available.");
+            if (inventory == null)
                 return false;
-            }
 
-            var slots = (IList<InventorySlot>)SlotsField.GetValue(inventory);
-            slots[emptyIndex] = new InventorySlot(itemType, uses > 0 ? uses : 1);
-
-            IssaPluginPlugin.Log.LogInfo(
-                $"[ItemRegistry] Added custom item {(int)itemType} to slot {emptyIndex} ({uses} uses)."
-            );
-            return true;
+            // 1.4.0 tracks valid use hashes when the server grants an item. Writing
+            // slots directly skipped that ledger, so legitimate custom uses could
+            // be rejected. Injected ItemData is accepted by the native add path.
+            bool added = inventory.ServerTryAddItem(itemType, uses > 0 ? uses : 1);
+            if (added)
+                IssaPluginPlugin.Log.LogInfo(
+                    $"[ItemRegistry] Added item {(int)itemType} through native inventory validation.");
+            return added;
         }
 
         /// <summary>

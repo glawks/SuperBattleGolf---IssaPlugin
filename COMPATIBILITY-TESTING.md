@@ -41,9 +41,11 @@ Manual SessionConfig installation remains required and is not silently ignored.
 - ItemSpawnerSettings.ResetRuntimeData injects weighted enabled items into regular
   and mobility pools through private ItemPool.spawnChances and totalSpawnChanceWeight.
   MatchSetupRules patches also recalculate weights; host spawn configuration is synced.
-- ServerTryAddItem and Mirror's generated UserCode_CmdAddItem__ItemType intercept
-  custom items. DirectAddCustomItem writes the authoritative private inventory slots
-  after HasSpaceForItem. Hotkeys/spawner use host grants or a server request handler.
+- The obsolete ServerTryAddItem interception is removed. DirectAddCustomItem now
+  calls native ServerTryAddItem, which accepts injected ItemData, checks space,
+  creates the slot and registers valid item-use hashes. The old direct slot write
+  omitted the new validation ledger. Mirror's generated UserCode_CmdAddItem__ItemType
+  custom-item hook and the existing host/hotkey grant permissions are retained.
 - TryUseItem and animator/inventory patches dispatch definitions and held models.
   ItemHelper reflects DecrementUseFromSlotAt, RemoveIfOutOfUses and SetCurrentItemUse.
 - NetworkIdentity.Awake attaches the same ordered bridge components on every peer.
@@ -58,6 +60,8 @@ add/use/consume, and network lifecycle hooks above are present with the expected
 parameter names. A literal-name scan of reflected game fields/properties found no
 missing members. Compiling the complete plugin found additional API changes:
 
+- Native ServerTryAddItem now calls ServerAddValidItemUsesForSlot. Grants use this
+  native path so the validation ledger matches the slot seed and use count.
 - PlayerMovement.CharacterScale is gone. Reads now use its generated
   NetworkcharacterScale property, which returns the same underlying characterScale
   SyncVar used by the existing setters. No new message types or component order changes.
@@ -118,7 +122,9 @@ Use an authorized reference source; no game binaries need be committed to Git.
 7. Repeat with ModConfig 0.1.3 and ItemSpawner enabled separately, recording their
    own errors. Confirm every existing setting remains available in the .cfg file.
 
-Review: config/items/network/bundle behaviour is unchanged by source diff, apart
-from removal of global kick suppression. Registrar isolation has regression tests
+Review: item definitions/configuration/network messages/bundle are preserved. Inventory
+  grants now use native validation, movement calls use current members, animation
+  helper discovery tolerates compiler ordinal changes, and global kick suppression
+  is removed. Registrar isolation has regression tests
 for missing targets, partial-class rollback, other-owner preservation and unload.
 The complete plugin compiles with zero warnings and zero errors. In-game checks remain required before merge or release.

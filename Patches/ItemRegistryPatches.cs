@@ -38,27 +38,6 @@ namespace IssaPlugin.Patches
     }
 
     [HarmonyPatch]
-    static class ServerTryAddItemPatch
-    {
-        static MethodBase TargetMethod() =>
-            AccessTools.Method(typeof(PlayerInventory), "ServerTryAddItem");
-
-        static bool Prefix(
-            PlayerInventory __instance,
-            ItemType itemToAdd,
-            int remainingUses,
-            ref bool __result
-        )
-        {
-            if (!ItemRegistry.IsCustomItem(itemToAdd))
-                return true;
-
-            __result = ItemRegistry.DirectAddCustomItem(__instance, itemToAdd, remainingUses);
-            return false;
-        }
-    }
-
-    [HarmonyPatch]
     static class CmdAddItemPatch
     {
         static MethodBase TargetMethod() =>
