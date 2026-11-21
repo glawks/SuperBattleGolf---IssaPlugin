@@ -79,11 +79,13 @@ namespace IssaPlugin.Items
                 inventory.PlayerInfo.PlayerAudio.PlayElephantGunShotForAllClients();
         }
 
+        internal static void PlayMinigunStartSound(PlayerInventory inventory) => PlaySafeShotSound(inventory);
+
         private static bool AllowNativeEffect(PlayerInventory inventory) =>
             Gate(EffectGates, inventory, 0.35, 2.25).TryAcquire(Time.timeAsDouble);
 
         private static readonly HashSet<ItemType> Busy = new HashSet<ItemType>();
-        private static readonly Dictionary<ItemType, float> LastVfxTime = new Dictionary<ItemType, float>();
+        private static readonly Dictionary<(PlayerInventory, ItemType), float> LastVfxTime = new Dictionary<(PlayerInventory, ItemType), float>();
 
         // The inventory currently inside HoldFire, set only after Busy.Add succeeds.
         // HoldBullets is true once the spin-up has finished and shells are firing.
@@ -145,6 +147,29 @@ namespace IssaPlugin.Items
             public Vector3 WorldPoint;
         }
 
+        private static bool _serverMinigunShot;
+        private static Vector3 _serverDirection;
+        private static ulong _serverUseHash;
+
+        internal static void SetMinigunTrigger(PlayerInventory inventory, bool active)
+        {
+            _holdInventory = active ? inventory : null;
+            _holdItem = ItemRegistry.MinigunItemType; _holdBullets = active;
+        }
+
+        internal static void FireServerMinigunShell(PlayerInventory inventory, FirearmShellProfile profile,
+            Vector3 direction, ulong hash)
+        {
+            if (!NetworkServer.active || inventory == null || !inventory.isServer
+                || profile.ItemType != ItemRegistry.MinigunItemType || !ItemRegistry.HasRegisteredUse(inventory, hash)) return;
+            try
+            {
+                _serverMinigunShot = true; _serverDirection = direction; _serverUseHash = hash;
+                FireShell(inventory, profile);
+            }
+            finally { _serverMinigunShot = false; _serverUseHash = 0; }
+        }
+
         public static void FireShell(PlayerInventory inventory, FirearmShellProfile profile)
         {
             if (inventory == null)
@@ -162,27 +187,21 @@ namespace IssaPlugin.Items
             Vector3 barrelForward = inventory.GetElephantGunBarrelForward();
             int layerMask = GameManager.LayerSettings.GunHittablesMask;
 
-            Vector3 aimPoint = inventory.GetFirearmAimPoint(
-                barrelEnd,
-                barrelForward,
-                profile.MaxAimingDistance,
-                layerMask,
-                out float localYaw
-            );
-
-            if (Mathf.Abs(localYaw) > 45f)
+            Vector3 aimPoint;
+            if (_serverMinigunShot)
+                aimPoint = barrelEnd + _serverDirection * profile.MaxAimingDistance;
+            else
             {
-                inventory.PlayerInfo.Movement.AlignWithCameraImmediately();
-                aimPoint = inventory.GetFirearmAimPoint(
-                    barrelEnd,
-                    barrelForward,
-                    profile.MaxAimingDistance,
-                    layerMask,
-                    out _
-                );
+                aimPoint = inventory.GetFirearmAimPoint(barrelEnd, barrelForward,
+                    profile.MaxAimingDistance, layerMask, out float localYaw);
+                if (Mathf.Abs(localYaw) > 45f)
+                {
+                    inventory.PlayerInfo.Movement.AlignWithCameraImmediately();
+                    aimPoint = inventory.GetFirearmAimPoint(barrelEnd, barrelForward,
+                        profile.MaxAimingDistance, layerMask, out _);
+                }
+                ScreenShakeHelper.ApplyScreenShake(profile.ScreenShakeIntensity);
             }
-
-            ScreenShakeHelper.ApplyScreenShake(profile.ScreenShakeIntensity);
 
             Vector3 aimDirection = aimPoint - barrelEnd;
             if (aimDirection.sqrMagnitude < 0.0001f)
@@ -316,9 +335,15 @@ namespace IssaPlugin.Items
             PelletImpact impact
         )
         {
-            if (!HitGates.TryGetValue(hittable, out var gate))
-                HitGates[hittable] = gate = new Compatibility.NativeRateGate(0.65, 2.25);
-            if (!gate.TryAcquire(Time.timeAsDouble)) return;
+            // Server-authoritative Minigun shots are already validated against
+            // server time, owned inventory, seed and native ammunition-use hash.
+            // Client-driven legacy firearms retain their outgoing native RPC gates.
+            if (!_serverMinigunShot)
+            {
+                if (!HitGates.TryGetValue(hittable, out var gate))
+                    HitGates[hittable] = gate = new Compatibility.NativeRateGate(0.65, 2.25);
+                if (!gate.TryAcquire(Time.timeAsDouble)) return;
+            }
 
             var useId = (ItemUseId)(
                 IncrementAndGetCurrentItemUseIdMethod?.Invoke(
@@ -339,7 +364,7 @@ namespace IssaPlugin.Items
                 false,
                 false,
                 NetworkTime.time,
-                0UL
+                _serverMinigunShot ? _serverUseHash : 0UL
             );
 
             FirearmKnockback.Send(hittable, impact.Direction, profile.BonusKnockback);
@@ -544,7 +569,7 @@ namespace IssaPlugin.Items
                 return;
             }
 
-            bool show = AllowVfx(profile);
+            bool show = AllowVfx(inventory, profile);
             // A throttled hit has nothing to draw. A throttled miss still rays the bear.
             if (!show && !missedAll)
                 return;
@@ -578,7 +603,8 @@ namespace IssaPlugin.Items
                 impacts,
                 missedAll,
                 aimDirection,
-                profile.MaxShotDistance
+                profile.MaxShotDistance,
+                _serverMinigunShot ? inventory.PlayerInfo : null
             );
         }
 
@@ -588,7 +614,7 @@ namespace IssaPlugin.Items
             Vector3 direction
         )
         {
-            if (!AllowVfx(profile))
+            if (!AllowVfx(inventory, profile))
                 return;
 
             if (AllowNativeEffect(inventory))
@@ -603,7 +629,7 @@ namespace IssaPlugin.Items
             bool shield
         )
         {
-            if (!AllowVfx(profile))
+            if (!AllowVfx(inventory, profile))
                 return;
 
             // The elephant-gun hit effect is itself a bullet. Shotgun pellets already
@@ -631,7 +657,7 @@ namespace IssaPlugin.Items
         private static bool UsesShotgunVisuals(FirearmShellProfile profile) =>
             profile.UseShotgunVisuals || profile.PelletCount > 1;
 
-        private static bool AllowVfx(FirearmShellProfile profile)
+        private static bool AllowVfx(PlayerInventory inventory, FirearmShellProfile profile)
         {
             float interval = profile.VfxInterval;
             if (interval <= 0f)
@@ -644,12 +670,12 @@ namespace IssaPlugin.Items
 
             float now = Time.time;
             if (
-                LastVfxTime.TryGetValue(profile.ItemType, out float last)
+                LastVfxTime.TryGetValue((inventory, profile.ItemType), out float last)
                 && now - last < interval
             )
                 return false;
 
-            LastVfxTime[profile.ItemType] = now;
+            LastVfxTime[(inventory, profile.ItemType)] = now;
             _shellVfxOpen = true;
             return true;
         }

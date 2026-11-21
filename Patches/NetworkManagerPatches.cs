@@ -257,6 +257,11 @@ namespace IssaPlugin.Patches
 
         private static void RegisterNetworkMessages()
         {
+            Writer<MinigunInputMessage>.write = MinigunInputSerialization.Write;
+            Reader<MinigunInputMessage>.read = MinigunInputSerialization.Read;
+            if (NetworkServer.active)
+                NetworkServer.RegisterHandler<MinigunInputMessage>(MinigunServerFire.Handle);
+
             // -------------------------------
             // ---- FreezeEffect Messages ----
             NetworkClient.RegisterHandler<FreezeBeginMessage>(
@@ -2084,6 +2089,8 @@ namespace IssaPlugin.Patches
         {
             CustomPrefabs.Clear();
             Firearm.ResetNativeRateState();
+            MinigunServerFire.Clear();
+            MinigunItem.Reset();
             MoonClientLogic.ClearAll();
         }
 

@@ -1,4 +1,8 @@
-# Multiplayer compatibility test r2 — SBG 1.4.0-798
+# Multiplayer compatibility test r3 — SBG 1.4.0-798
+
+See MINIGUN-R3-TESTING.md for the continuous-fire change. The Minigun now uses
+a validated server-driven firing path at the configured cadence (default 50/s).
+The r2 client-command pacing below remains for the other legacy firearms.
 
 Development only. All peers must install the SAME new DLL and keep the existing
 issamod asset bundle. No public release, main merge or upstream PR is authorised.
@@ -9,7 +13,7 @@ upstream .dll.sig does not sign it. Back up the old DLL and .cfg first.
 
 Host logs 15:27/15:37 show registered items/prefabs and two obsolete patch failures.
 The later host log confirms ammo-decrement rate violations, reports and kicks;
-there is also a per-target hit warning. The partial remote log shows six failed
+there is also a per-target hit warning. Before the user supplied the missing asset bundle, the partial remote log showed six failed
 spawns for four custom prefab IDs, subsequent missing sync targets, absent
 Teleporter VFX and a KickedFromLobby disconnect. It lacks client startup, so the
 original cause/timing of its missing registrations and VFX state is not established.
@@ -23,7 +27,7 @@ No rate checker, kick/report callback, or server authority check is disabled her
 
 | Area | Change | What must still be verified |
 | --- | --- | --- |
-| Firearms | Shared sender-side gates across weapon switches; ammo requests >=0.15s apart with a 1.25s quiet interval after four. Native damage >=0.65s per target with 2.25s quiet intervals after four. Native gun VFX and sound have independent gates. Applies to Minigun, AK47, AA12, Remington870 and Sniper through shared Firearm code. | Source configuration remains intact, but effective sustained fire/damage is lower. Confirm ammo, deselection, aiming, hit effects, knockback and cancellation. No 50Hz gameplay claim. |
+| Firearms | Shared sender-side gates across weapon switches; ammo requests >=0.15s apart with a 1.25s quiet interval after four. Native damage >=0.65s per target with 2.25s quiet intervals after four. Native gun VFX and sound have independent gates. Applies to AK47, AA12, Remington870 and Sniper through shared legacy Firearm code; the Minigun uses the r3 server path. | Source configuration remains intact, but effective sustained fire/damage is lower. Confirm ammo, deselection, aiming, hit effects, knockback and cancellation. The Minigun has its own tested 50Hz server clock; actual Unity/network operation remains unverified. |
 | Native protection | Native limits inspected: decrement 0.1s/reset1s, target hit 0.5s/reset2s, hit/miss VFX 0.25s/reset2s, elephant shot sound 0.2s/reset1s. Quiet windows and four-call bursts limit accumulated violations from ordinary packet bunching. | Automated tests model four-message bursts with 200ms extra delivery delay. Arbitrary transport stalls and traffic from other mods are not proven safe. Any suspicious/confirmed warning remains a release blocker. |
 | Prefabs | Verify actual Mirror.prefabs entries, retain custom entries in manager.spawnPrefabs, register before Ready, initialise server handlers on server start, repair missing entries immediately before OnSpawn. No sticky registration boolean. | Determine whether missing client entries were timing, another clear, destroyed templates or a mismatched bundle. Existing logs cannot distinguish them. |
 | Network diagnostics | Verified registration, lost-entry repair, server spawn accepted, client instantiation and destruction report asset ID/net ID. Bundle SHA256 and raw visual availability are logged at load. | Compare full startup logs on every peer. Uninstantiated or colliding IDs are failures, not successful spawns. |
@@ -37,8 +41,9 @@ No rate checker, kick/report callback, or server authority check is disabled her
 | Landmine teardown | Do not run manager physics jobs while the game is changing scenes or shutting down, matching the native deferred-deregistration lifetime. | The supplied transform exception follows disconnect; this does not prove it caused the kick. Check teardown logs and subsequent lobby. No catch-all exception finalizer. |
 | ModConfig | No dependency DLL changes. 0.1.3 still needs its own FullScreenMessage signature update. | Disable ModConfig for first isolation test; .cfg settings remain available. |
 
-All 46 definitions, ItemType IDs 100–145, config keys/defaults, wire message types
-and bridge component order are retained. No new NetworkBehaviour components are
+All 46 definitions, ItemType IDs 100–145, config keys/defaults, existing wire message types
+and bridge component order are retained. One authenticated MinigunInputMessage is
+added in r3; all peers must update together. No new NetworkBehaviour components are
 added to prefabs. No game runtime binaries/assets are needed in CI: generated
 ReferenceAssembly-marked metadata-only APIs are committed for compilation, and
 excluded from the downloadable plugin artifact.

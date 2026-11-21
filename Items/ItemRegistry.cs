@@ -207,6 +207,18 @@ namespace IssaPlugin.Items
             _hotkeyControlsKeyboard = null;
         }
 
+        internal static bool TryGetSlot(PlayerInventory inventory, int index, out InventorySlot slot)
+        {
+            slot = default;
+            if (inventory == null || index < 0) return false;
+            var slots = SlotsField.GetValue(inventory) as IList<InventorySlot>;
+            if (slots == null || index >= slots.Count) return false;
+            slot = slots[index]; return true;
+        }
+        private static readonly FieldInfo ValidUsesField = AccessTools.Field(typeof(PlayerInventory), "serverValidItemUseHashes");
+        internal static bool HasRegisteredUse(PlayerInventory inventory, ulong hash) =>
+            ValidUsesField?.GetValue(inventory) is HashSet<ulong> hashes && hashes.Contains(hash);
+
         public static CustomItemDefinition GetDefinition(ItemType type) =>
             CustomItemDefinitionMap.TryGetValue((int)type, out var d) ? d : null;
 

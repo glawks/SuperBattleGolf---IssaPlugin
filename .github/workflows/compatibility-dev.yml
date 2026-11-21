@@ -79,6 +79,7 @@ jobs:
           Copy-Item bin/Release/netstandard2.1/IssaPlugin.dll artifacts/IssaMod-dev/
           Copy-Item bin/Release/netstandard2.1/IssaPlugin.pdb artifacts/IssaMod-dev/
           Copy-Item MULTIPLAYER-TESTING.md artifacts/IssaMod-dev/
+          Copy-Item MINIGUN-R3-TESTING.md artifacts/IssaMod-dev/
           Copy-Item COMPATIBILITY-TESTING.md artifacts/IssaMod-dev/
           git rev-parse HEAD | Set-Content artifacts/IssaMod-dev/commit.txt
       - uses: actions/upload-artifact@v4

@@ -76,7 +76,8 @@ namespace IssaPlugin.Items
             List<Vector3> impacts,
             bool bearRay,
             Vector3 bearDirection,
-            float bearRange
+            float bearRange,
+            PlayerInfo serverShooter = null
         )
         {
             var msg = new ShotgunTracerMessage
@@ -100,12 +101,14 @@ namespace IssaPlugin.Items
             Spawn(msg);
 
             if (msg.BearRay && NetworkServer.active)
-                HitBear(GameManager.LocalPlayerInfo, msg);
+                HitBear(serverShooter != null ? serverShooter : GameManager.LocalPlayerInfo, msg);
 
             if (NetworkServer.active)
             {
-                // The host does not receive its own SendToAll. Remotes do.
-                NetworkServer.SendToAll(msg);
+                // Spawn() already rendered this on the host. Send once to each remote.
+                foreach (var connection in NetworkServer.connections.Values)
+                    if (connection != null && connection != NetworkServer.localConnection)
+                        connection.Send(msg);
             }
             else if (NetworkClient.active)
             {

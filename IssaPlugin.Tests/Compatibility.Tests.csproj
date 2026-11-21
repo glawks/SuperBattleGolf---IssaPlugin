@@ -11,5 +11,6 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
     <Compile Include="../Compatibility/PatchRegistrar.cs" Link="PatchRegistrar.cs" />
     <Compile Include="../Compatibility/NativeRateGate.cs" Link="NativeRateGate.cs" />
+    <Compile Include="../Compatibility/AutomaticFireClock.cs" Link="AutomaticFireClock.cs" />
   </ItemGroup>
 </Project>

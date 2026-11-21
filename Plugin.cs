@@ -119,7 +119,7 @@ namespace IssaPlugin
             gameObject.AddComponent<OrbBomberOverlay>();
 
             Log.LogInfo($"IssaPlugin by Scusemua has loaded ({patchFailures} patch failures). "
-                + "Multiplayer compatibility test r2 for SBG 1.4.0-798; in-game verification required.");
+                + "Continuous Minigun test r3 for SBG 1.4.0-798; in-game verification required.");
         }
 
         private void OnDestroy()
@@ -156,6 +156,7 @@ namespace IssaPlugin
         private void Update()
         {
             MoonClientLogic.UpdateAll();
+            MinigunServerFire.Update();
             if (!_itemNamesRegistered)
                 _itemNamesRegistered = ItemRegistry.RegisterCustomItemNames();
 
@@ -221,6 +222,8 @@ namespace IssaPlugin
             // only fires on disconnect, not on hole-to-hole scene changes).
             if (currentState != MatchState.HoleOverview)
                 return;
+
+            MinigunServerFire.Clear();
 
             // Bumped once per peer so an anchor still in flight from the
             // previous hole cannot attach on this one.
